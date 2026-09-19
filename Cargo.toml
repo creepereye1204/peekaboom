@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/sim",
+    "crates/net",
+    "crates/input",
+    "crates/render",
+    "crates/app",
+]
+
+# 워크스페이스 루트 자신도 패키지다 — repo-layout.md DD-006이 정한 최상위
+# `tests/`(크레이트 경계를 넘나드는 통합 테스트)를 담을 자리가 필요해서다.
+# 이 패키지 자체는 배포하지 않는다.
+[package]
+name = "peekaboom-workspace-tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dev-dependencies]
+peekaboom-sim = { path = "crates/sim" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

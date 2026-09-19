@@ -1,0 +1,213 @@
+# WebGL2 + web-sys 요약 (참조 캐시)
+
+목적: 2D 스프라이트 배칭에 필요한 것만. 전체 스펙이 아니다.
+관련: DD-004 (엔진 미채택, 직접 제어)
+
+---
+
+## 컨텍스트 획득 (web-sys)
+
+```rust
+let gl = canvas
+    .get_context("webgl2")?
+    .ok_or("WebGL2 미지원")?
+    .dyn_into::<WebGl2RenderingContext>()?;
+```
+
+`Cargo.toml`의 `web-sys` features에 쓰는 타입을 **하나하나 명시**해야 한다.
+빠뜨리면 "no method named ..." 컴파일 에러가 난다. 필요한 것들:
+
+```
+WebGl2RenderingContext, WebGlBuffer, WebGlProgram, WebGlShader,
+WebGlUniformLocation, WebGlVertexArrayObject, WebGlTexture,
+HtmlCanvasElement, Document, Window, Element
+```
+
+---
+
+## 인스턴스 렌더링 (드로우콜 1회로 수천 개)
+
+핵심 아이디어: 단위 사각형 정점 4개를 한 번만 올리고, 스프라이트마다 다른 값(위치·크기·색·UV)은 **인스턴스 속성**으로 준다.
+
+```rust
+// 정점 버퍼: 단위 사각형 (TRIANGLE_STRIP용 4점)
+let corners: [f32; 8] = [0.,0., 1.,0., 0.,1., 1.,1.];
+
+// location 0 = 정점별
+gl.enable_vertex_attrib_array(0);
+gl.vertex_attrib_pointer_with_i32(0, 2, GL::FLOAT, false, 0, 0);
+
+// location 1,2 = 인스턴스별
+gl.enable_vertex_attrib_array(1);
+gl.vertex_attrib_pointer_with_i32(1, 4, GL::FLOAT, false, stride, 0);
+gl.vertex_attrib_divisor(1, 1);   // ← 1 = 인스턴스마다 1번 전진
+
+gl.draw_arrays_instanced(GL::TRIANGLE_STRIP, 0, 4, instance_count);
+```
+
+`vertex_attrib_divisor(loc, 1)`이 핵심이다. 0이면 정점마다, 1이면 인스턴스마다 전진한다.
+
+### VAO
+
+WebGL2는 VAO가 기본 제공된다 (WebGL1은 확장 필요). 속성 설정을 한 번 해두고 `bind_vertex_array`로 전환한다.
+
+---
+
+## 셰이더 (GLSL ES 3.00)
+
+```glsl
+#version 300 es
+```
+
+**첫 줄이어야 한다.** 앞에 공백이나 주석이 있으면 컴파일 에러.
+
+WebGL1(GLSL ES 1.00)과 달라진 것:
+
+| WebGL1 | WebGL2 |
+|---|---|
+| `attribute` | `in` (버텍스) |
+| `varying` | `out` (버텍스) / `in` (프래그먼트) |
+| `gl_FragColor` | 직접 선언한 `out vec4` |
+| `texture2D()` | `texture()` |
+| — | `layout(location = N) in` 사용 가능 |
+
+프래그먼트 셰이더에 `precision mediump float;` 필수 (없으면 컴파일 에러).
+
+### 컴파일 에러 확인
+
+```rust
+if !gl.get_shader_parameter(&sh, GL::COMPILE_STATUS).as_bool().unwrap_or(false) {
+    let log = gl.get_shader_info_log(&sh).unwrap_or_default();
+    // 로그를 반드시 보여준다. 안 그러면 검은 화면만 보고 원인을 못 찾는다
+}
+```
+
+링크도 마찬가지로 `LINK_STATUS` + `get_program_info_log`.
+
+---
+
+## 버퍼 업로드와 unsafe
+
+가장 흔한 예제는 이렇다:
+
+```rust
+unsafe {
+    let view = js_sys::Float32Array::view(data);   // unsafe!
+    gl.buffer_data_with_array_buffer_view(..., &view, GL::DYNAMIC_DRAW);
+}
+```
+
+`view`는 Rust 메모리를 **빌려다 쓰므로** unsafe다. 그 사이에 wasm 메모리가 재할당(grow)되면 댕글링이 된다.
+
+우리 규율(H8)은 `unsafe` 금지이므로 복사본을 쓴다:
+
+```rust
+let arr = js_sys::Float32Array::new_with_length(data.len() as u32);
+arr.copy_from(data);
+gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &arr, GL::DYNAMIC_DRAW);
+```
+
+복사 비용이 있지만 수천 float 규모에서는 무시할 수준이다. **병목으로 측정되면** 그때 design-doc을 쓰고 예외를 둔다.
+
+---
+
+## 좌표계
+
+WebGL NDC는 y가 **위**가 +1이다. 2D 게임은 보통 y가 아래로 증가하므로 뒤집어야 한다.
+
+```glsl
+vec2 ndc = vec2(
+    screen.x / u_viewport.x * 2.0 - 1.0,
+    1.0 - screen.y / u_viewport.y * 2.0   // ← y 반전
+);
+```
+
+---
+
+## 캔버스 크기와 DPR
+
+```
+canvas.width / canvas.height   = 실제 픽셀 버퍼 (그리는 해상도)
+canvas.clientWidth / Height    = CSS 픽셀 (화면 크기)
+```
+
+둘이 다르면 늘어나 보인다. 리사이즈 때 둘 다 맞춘다:
+
+```js
+const dpr = Math.min(devicePixelRatio || 1, 2)   // 상한 2.0 (발열)
+canvas.width  = Math.round(canvas.clientWidth  * dpr)
+canvas.height = Math.round(canvas.clientHeight * dpr)
+gl.viewport(0, 0, canvas.width, canvas.height)
+```
+
+**터치 좌표는 CSS px, 렌더는 물리 px**이라 변환이 필요하다. 조이스틱 판정이 어긋나는 흔한 원인.
+
+---
+
+## 블렌딩
+
+```rust
+gl.enable(GL::BLEND);
+gl.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
+```
+
+스프라이트가 프리멀티플라이드 알파면 `(GL::ONE, GL::ONE_MINUS_SRC_ALPHA)`.
+
+---
+
+## 픽셀아트 텍스처
+
+```rust
+gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::NEAREST as i32);
+gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::NEAREST as i32);
+gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::CLAMP_TO_EDGE as i32);
+gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
+```
+
+아틀라스에서 이웃 스프라이트가 새어나오는 걸 막으려면 **패딩 2px** (DD-004).
+
+---
+
+## Fog of War용 단일 채널 텍스처
+
+```rust
+gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+    GL::TEXTURE_2D, 0,
+    GL::R8 as i32,          // internal format
+    w, h, 0,
+    GL::RED,                // format
+    GL::UNSIGNED_BYTE,
+    Some(data),
+)?;
+```
+
+WebGL2에서만 `R8`이 쓸 수 있다 (WebGL1은 LUMINANCE). 셰이더에서 `.r`로 읽는다.
+
+---
+
+## 모바일 주의사항
+
+| 항목 | 값 |
+|---|---|
+| 최대 텍스처 크기 | 구형 기기는 2048. 아틀라스 상한을 2048로 (DD-004) |
+| `highp` 지원 | 프래그먼트에서 보장 안 됨. `mediump` 기본 |
+| 컨텍스트 손실 | `webglcontextlost` 이벤트. 탭 전환/메모리 압박 시 발생 |
+
+컨텍스트 손실은 실제로 일어난다. 최소한 이벤트를 잡아 사용자에게 알려야 한다:
+
+```js
+canvas.addEventListener('webglcontextlost', e => {
+  e.preventDefault()   // 이걸 해야 복구가 가능해진다
+  // 리소스 재생성 필요
+})
+```
+
+> **미검증**: 위 모바일 항목들은 일반적으로 알려진 내용이다. 실기 측정은 exec-plan 003.
+
+---
+
+## 디버깅
+
+- 검은 화면 = 대부분 셰이더 컴파일/링크 실패거나 `viewport` 미설정. **로그를 반드시 출력한다**
+- `gl.get_error()`는 비싸다. 개발 빌드에서만
+- 드로우콜 수를 직접 세어 디버그 패널에 띄운다 (RELIABILITY §6). 예산 ≤ 3

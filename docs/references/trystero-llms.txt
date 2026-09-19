@@ -1,0 +1,161 @@
+# Trystero 요약 (참조 캐시)
+
+출처: https://github.com/dmotz/trystero (README, 2026-09-19 확인)
+라이선스: MIT
+목적: 에이전트가 기억에 의존해 API를 쓰지 않도록 하는 캐시. **우리 결정은 여기 적지 않는다** (design-docs로).
+
+> **검증**: `npm install`로 받은 실제 버전(0.21.8) 소스(`node_modules/trystero/src/`)를
+> 001 구현 중 직접 대조했다. README 기반의 아래 요약과 실제 동작이 갈린 지점을
+> 고쳤다 (원래 있던 잘못된 내용은 tech-debt-tracker.md "해결된 부채" 참조):
+> `onPeerJoin`/`onPeerLeave`는 **함수 호출**이지 대입식이 아니고, `joinRoom`의
+> 3번째 인자는 **`onJoinError` 콜백 그 자체**이지 옵션 객체가 아니며,
+> `onPeerHandshake`/`isInitiator`는 이 버전에 **존재하지 않는다**.
+
+---
+
+## 개요
+
+서버 없는 WebRTC 매치메이킹. 공개 릴레이 네트워크에 편승해 SDP를 교환하고, 연결된 뒤에는 피어 간 직접 통신(E2E 암호화).
+
+**중요**: 피어 발견 이후의 앱 데이터는 릴레이를 지나지 않는다.
+
+---
+
+## 전략 (패키지별로 import 대상이 다름)
+
+```js
+import {joinRoom} from 'trystero'                 // 기본: Nostr
+import {joinRoom} from '@trystero-p2p/mqtt'       // MQTT
+import {joinRoom} from '@trystero-p2p/torrent'    // BitTorrent
+import {joinRoom} from '@trystero-p2p/supabase'
+import {joinRoom} from '@trystero-p2p/firebase'
+import {joinRoom} from '@trystero-p2p/ipfs'
+import {joinRoom} from '@trystero-p2p/ws-relay'   // 자체 호스팅 (public 기본값 없음)
+```
+
+README 권장 순서: **Nostr(기본, 릴레이 수백 개) > MQTT > BitTorrent > IPFS**.
+중간 옵션으로 Supabase/Firebase.
+
+---
+
+## 기본 사용
+
+```js
+import {joinRoom, selfId} from 'trystero'
+
+const room = joinRoom({appId: 'my-app'}, 'room-id', onJoinErrorFn)
+
+room.onPeerJoin(peerId => {})   // 함수 호출이다. 대입식이 아니다 (0.21.8 실측)
+room.onPeerLeave(peerId => {})
+room.onPeerStream((stream, peerId) => {})
+room.leave()
+```
+
+`joinRoom()`을 같은 네임스페이스로 여러 번 부르면 **같은 room 인스턴스**가 돌아온다 (idempotent).
+
+`joinRoom(config, roomId, onJoinError)`의 3번째 인자는 **콜백 함수 그 자체**다
+(`{onJoinError: fn}` 같은 옵션 객체가 아니다). `onPeerHandshake`/`isInitiator`는
+0.21.8에 없다 — 누가 오퍼를 보낼지는 내부적으로 `selfId` 사전순 비교로 충돌을
+해소할 뿐, 공개 API로 노출되지 않는다.
+
+---
+
+## config 주요 옵션
+
+| 키 | 설명 |
+|---|---|
+| `appId` | **필수**. 앱 고유 문자열. (Firebase면 databaseURL, Supabase면 프로젝트 URL) |
+| `password` | SDP를 AES-GCM으로 암호화하는 공유 비밀. 없으면 appId+roomId 파생 키 사용 (릴레이 운영자가 역산 가능) |
+| `passive` | 백업/릴레이 피어용. 활성 피어가 나타날 때까지 자신을 알리지 않음 |
+| `relayConfig.urls` | 커스텀 릴레이 목록 (BitTorrent/Nostr/MQTT는 선택, ws-relay는 **필수**). wss만 |
+| `relayConfig.redundancy` | 기본 릴레이 몇 곳에 동시 접속할지 (정수). `urls` 주면 무시됨 |
+| `relayConfig.manualReconnection` | true면 오프라인/온라인 시 자동 재접속 일시정지를 끔 (Nostr/BitTorrent) |
+| `relayConfig.warnOnRelayFailure` | false면 릴레이 실패 경고 억제 |
+| `rtcConfig` | 커스텀 `RTCConfiguration` |
+| `turnConfig` | TURN 서버 목록 (ICE server config 객체 배열). **Trystero 기본 STUN도 함께 쓰임** |
+| `trickleIce` | ICE 후보를 점진 전송할지. 기본은 전략별 (대부분 true, BitTorrent/IPFS는 false) |
+| `rtcPolyfill` | 브라우저 밖(Node 등)에서 `RTCPeerConnection` 대체 |
+
+`joinRoom(config, roomId, onJoinError)`의 세 번째 인자 (0.21.8 실측: 콜백 함수 그 자체):
+
+- `onJoinError(details)` — 비밀번호 불일치(SDP 복호화 실패) 시 호출. `details = {appId, roomId, peerId, error}`. **주의**: strategy.js를 실제로 보면 이건 "패스워드가 틀려 offer/answer 복호화에 실패했다"는 뜻이지, README가 시사하는 것처럼 일반적인 ICE/TURN 실패까지 포괄하는 건 아니었다. 대칭 NAT로 인한 연결 실패는 이 콜백이 아니라 `pc.oniceconnectionstatechange`/`onconnectionstatechange`를 직접 봐야 한다(webrtc-datachannel-llms.txt)
+- ~~`onPeerHandshake`~~ — 0.21.8에는 없다. README 어딘가에 있었다면 다른 버전 얘기다
+
+---
+
+## room 메서드
+
+| 메서드 | 반환/설명 |
+|---|---|
+| `leave()` | 방 나가기 + 이벤트 구독 해제 |
+| `getPeers()` | **`{peerId: RTCPeerConnection}` 맵** ← 우리가 fast 채널을 직접 열 때 쓴다 |
+| `isPassive()` | passive로 들어왔는지 |
+| `addStream/removeStream/addTrack/removeTrack/replaceTrack` | 미디어 |
+| `makeAction(actionId, [config])` | 커스텀 데이터 액션 |
+| `ping(peerId)` | RTT(ms) Promise |
+| `onPeerJoin/onPeerLeave/onPeerStream/onPeerTrack` | 콜백 프로퍼티 (대입식) |
+
+`onPeerJoin`에 새 핸들러를 대입하면 **기존 활성 피어들이 즉시 재생(replay)된다.**
+
+---
+
+## makeAction
+
+```js
+const drink = room.makeAction('drink')
+drink.send({a: 1}, {target: peerId})      // target 생략 = 전체
+drink.onMessage = (data, {peerId, metadata}) => {}
+```
+
+- 직렬화/역직렬화 자동. 숫자는 숫자로, 객체는 객체로, 바이너리(TypedArray/Blob)는 `ArrayBuffer`로 도착
+- 대용량 자동 청킹 + 스로틀링
+- `send(data, {metadata, target, onProgress, signal})`
+- `onReceiveProgress = (percent, {peerId, metadata}) => {}`
+- 요청/응답: `makeAction('x', {kind: 'request', onRequest: fn})` → `request(data, {target, timeoutMs})`, `requestMany(data, {targets, timeoutMs, onResult})`
+- TypeScript: `room.makeAction<T>('id')`
+
+---
+
+## 모듈 레벨 export
+
+| 이름 | 설명 |
+|---|---|
+| `selfId` | 이 사용자의 전역 고유 피어 ID |
+| `getRelaySockets()` | `{relayUrl: WebSocket}` (BitTorrent/Nostr/MQTT/ws-relay). **릴레이 상태 감시에 쓴다** |
+| `pauseRelayReconnection()` / `resumeRelayReconnection()` | Nostr/BitTorrent 전용 |
+
+---
+
+## TURN 설정 예
+
+```js
+const room = joinRoom({
+  appId: '...',
+  turnConfig: [{
+    urls: ['turn:your-turn-server.ok:1979'],
+    username: 'username',
+    credential: 'password'
+  }]
+}, 'roomId')
+```
+
+README가 언급한 TURN 옵션: Cloudflare Calls TURN(월 1000GB 무료 티어), Open Relay(metered.ca), 자체 호스팅(coturn, Pion TURN, Violet, eturnal).
+
+`turnConfig`로 주면 Trystero 기본 STUN도 함께 쓰인다. 둘 다 직접 지정하려면 `rtcConfig.iceServers`로 (기본값 상속 안 됨).
+
+---
+
+## 암호화
+
+- 피어 연결 후 통신은 항상 E2E 암호화 (WebRTC DTLS)
+- 연결 전 SDP는 릴레이를 지남. 기본적으로 appId+roomId 파생 키로 암호화되지만 **릴레이 운영자는 appId/roomId를 알면 역산 가능**
+- `password`를 주면 그 비밀로 키 파생 → 릴레이 운영자도 못 읽음. 방의 모든 피어가 같은 값이어야 연결됨
+
+---
+
+## 우리 프로젝트와 관련해 주의할 점
+
+1. `makeAction`은 내부적으로 **신뢰성 채널**을 쓴다 → 스냅샷/입력에 쓰면 재전송 지연이 누적된다. `getPeers()`로 `RTCPeerConnection`을 꺼내 `{ordered:false, maxRetransmits:0}` 채널을 직접 여는 게 맞다 (DD-003)
+2. README가 방(room)을 권장하는 이유: **브라우저가 동시에 감당할 수 있는 WebRTC 연결 수에 한계가 있다**
+3. `onJoinError`의 "SDP는 교환됐는데 연결 실패" 케이스가 곧 대칭 NAT 상황이다 → lobby-and-joining.md의 안내 메시지 트리거
+4. CDN(`esm.run`)으로 불러오는 예제가 있지만 우리는 **번들에 포함**한다 (SECURITY.md §6)

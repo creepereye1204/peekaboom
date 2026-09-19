@@ -1,0 +1,6 @@
+/target
+/pkg
+/dist
+/node_modules
+assets/src/*.zip
+peekaboom-harness.tar.gz

@@ -1,0 +1,93 @@
+# CC0 게임 에셋 출처 (참조 캐시)
+
+조사일: 2026-09-19
+목적: 에셋을 찾을 때 매번 웹을 뒤지지 않기 위한 캐시. 실제 채택 결정은 `docs/generated/asset-manifest.md`.
+
+---
+
+## 1차 출처: Kenney
+
+https://kenney.nl/assets — 전부 **CC0 1.0 Universal**. 상업 이용 가능, 귀속 표기 불필요(권장은 함).
+
+itch.io 미러: https://kenney-assets.itch.io/
+OpenGameArt 미러: https://opengameart.org/users/kenney (일부만)
+
+### 우리와 관련 있는 팩
+
+| 팩 | URL | 규모 | 비고 |
+|---|---|---|---|
+| Top-down Shooter | kenney.nl/assets/top-down-shooter | 580 | 탑다운 캐릭터+타일+오브젝트. **일부 캐릭터는 유료 번들 전용** |
+| Tower Defense (Top-Down) | kenney.nl/assets/tower-defense-top-down | 300 | 탑다운 환경물 |
+| Scribble Dungeons | kenney-assets.itch.io/scribble-dungeons | 256+ | 탑다운 실내/던전, 1.4MB |
+| 1-Bit Pack | kenney-assets.itch.io/1-bit-pack | 1000+ | 1비트 타일. 아틀라스 극소 |
+| Onscreen Controls | kenney.nl/assets/onscreen-controls | 400 | **모바일 조이스틱/버튼, 8스타일, 761KB** |
+| UI Pack | opengameart.org/content/ui-pack | — | 버튼/슬라이더/패널 |
+| Interface Sounds | kenney.nl/assets/interface-sounds | 100 | OGG, 볼륨 정규화, 834KB. **UI 사운드만** |
+| Isometric Library Tiles | kenney-assets.itch.io/isometric-library-tiles | — | 아이소+탑다운 실내(도서관) |
+
+### 주의
+
+- 팩 미리보기에서 **흐리게(faded) 표시된 에셋은 무료 팩에 없다.** "Kenney Game Assets 2/All-in-1" 번들 전용
+- 다운로드 페이지가 기부를 권하지만 "Continue without donating"로 무료 받기 가능
+- 파일 구조는 팩마다 다르다. `PNG/`, `Spritesheet/`, `Vector/` 조합이 흔함
+
+---
+
+## 2차 출처
+
+### OpenGameArt.org
+
+https://opengameart.org — 라이선스가 **작품마다 다르다**. 반드시 CC0 필터를 건다:
+
+```
+https://opengameart.org/art-search-advanced?field_art_licenses_tid[]=4   (CC0)
+```
+
+장점: 검색 가능, 커뮤니티 큼
+단점: 품질 편차 큼, 스타일 통일이 어려움, 일부는 라이선스 표기가 모호
+
+### itch.io
+
+CC0 필터 URL:
+```
+https://itch.io/game-assets/assets-cc0
+https://itch.io/game-assets/assets-cc0/tag-tilemap
+```
+
+Kenney 외 CC0 제작자들이 많다. 태그로 좁힐 수 있음(`tag-roguelike`, `tag-tilemap`, `tag-topdown`).
+
+### freesound.org (사운드)
+
+https://freesound.org — **CC0 필터 필수** (CC-BY가 섞여 있다)
+```
+검색 후 License 필터 → "Creative Commons 0"
+```
+
+발소리·문·임팩트 같은 게임플레이 SFX를 여기서 찾는다. Kenney Interface Sounds가 못 채우는 부분.
+
+---
+
+## 라이선스 요약
+
+| 라이선스 | 상업 이용 | 귀속 표기 | 우리 정책 |
+|---|---|---|---|
+| CC0 1.0 | 가능 | 불필요 | ✅ 사용 |
+| CC-BY 4.0 | 가능 | **필수** | ❌ 미사용 (관리 비용) |
+| CC-BY-SA | 가능 | 필수 + 동일조건 | ❌ 미사용 (전염성) |
+| OFL 1.1 (폰트) | 가능 | 폰트 파일에 라이선스 동봉 | ✅ 폰트만 |
+| MIT | 가능 | 라이선스 고지 | ✅ 코드 라이브러리 |
+
+CC0 문구 원문 (Kenney 페이지):
+> License: (CC0 1.0 Universal) You're free to use these game assets in any project, personal or commercial. There's no need to ask permission before using these. Giving attribution is not required, but is greatly appreciated!
+
+---
+
+## 에셋 추가 체크리스트
+
+새 에셋을 넣을 때 반드시:
+
+1. [ ] zip을 **실제로 다운로드**했다 (미리보기만 보고 결정하지 않았다)
+2. [ ] 쓰려는 파일이 zip 안에 **실제로 존재**한다
+3. [ ] 라이선스가 CC0(또는 폰트면 OFL)임을 zip 내 LICENSE 파일에서 확인했다
+4. [ ] `docs/generated/asset-manifest.md`에 출처 URL + 라이선스 + 파일 경로를 기록했다
+5. [ ] 기존 아트 스타일과 섞여도 어색하지 않다 (DESIGN.md §3)

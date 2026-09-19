@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <!--
+      SECURITY.md §6: script-src 'self' (Trystero는 번들에 포함, CDN 안 씀).
+      connect-src: 시그널링 릴레이는 공개 wss 다수라 정확한 호스트를 고정하기
+      어렵다 — Trystero nostr 전략의 릴레이 목록이 바뀔 수 있어서다.
+      tech-debt-tracker TD-013: 정확한 릴레이 호스트로 좁히기.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: https:; img-src 'self' data:;"
+    />
+    <meta name="build" content="__BUILD_SHA__" />
+    <title>PEEKABOOM</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+
+    <pre id="debug-panel" aria-hidden="true"></pre>
+
+    <button id="share-btn" type="button">공유</button>
+
+    <p id="host-warning">
+      방을 만든 사람이 심판 역할을 합니다. 모르는 사람 방에서는 공정성이 보장되지 않아요.
+    </p>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

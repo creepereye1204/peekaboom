@@ -1,0 +1,117 @@
+# WebRTC DataChannel 요약 (참조 캐시)
+
+목적: 게임 네트워킹 관점에서 알아야 할 것만. 전체 스펙이 아니다.
+
+---
+
+## 채널 신뢰성 설정
+
+`RTCPeerConnection.createDataChannel(label, options)`
+
+| 옵션 조합 | 동작 | 게임 용도 |
+|---|---|---|
+| 기본 (`ordered: true`, 재전송 무한) | TCP 유사 | 채팅, 이벤트, 호스트 이양 |
+| `{ordered: false, maxRetransmits: 0}` | UDP 유사 | **스냅샷, 입력** |
+| `{ordered: false, maxPacketLifeTime: 50}` | 50ms 안에만 재전송 | 중간 옵션 |
+
+`maxRetransmits`와 `maxPacketLifeTime`은 **동시에 못 쓴다**.
+
+### 왜 게임에 unreliable이 필요한가
+
+신뢰성 채널에서 패킷 하나가 유실되면 **그 뒤 패킷이 전부 대기**한다(head-of-line blocking). 30Hz 스냅샷에서 이건 치명적이다. 66ms 전 스냅샷을 재전송받느니 최신 것 하나를 받는 게 낫다.
+
+`ordered: false`도 중요하다. 순서 보장만으로도 HOL blocking이 생긴다.
+
+---
+
+## 채널 상태
+
+```
+connecting → open → closing → closed
+```
+
+- `dc.readyState`로 확인. `open` 아닐 때 `send()`하면 throw
+- `dc.onopen` / `dc.onclose` / `dc.onerror`
+- **`bufferedAmount`를 확인하라**: 송신 버퍼가 쌓이면 지연이 폭증한다
+
+```js
+if (dc.bufferedAmount > 64 * 1024) return;  // 이번 틱 스냅샷 건너뜀
+dc.send(buf);
+```
+
+`bufferedAmountLowThreshold` + `onbufferedamountlow`로 이벤트 기반 처리도 가능.
+
+---
+
+## 메시지 크기
+
+- 이론상 큰 메시지도 되지만 **16 KB 이하를 권장**한다 (브라우저/구현 간 호환성)
+- 우리 스냅샷은 100바이트 내외라 무관
+- 수신 측은 크기 상한을 **반드시 검사**한다 (SECURITY.md §4)
+
+---
+
+## ICE / NAT
+
+연결 성립 과정:
+
+```
+1. ICE candidate 수집 (host / srflx(STUN) / relay(TURN))
+2. SDP offer/answer 교환 (시그널링 필요)
+3. connectivity check → 성공한 후보 쌍 선택
+4. DTLS 핸드셰이크 → SCTP → DataChannel open
+```
+
+| NAT 유형 | STUN만으로 | 비고 |
+|---|---|---|
+| Full cone / Restricted cone | 대체로 성공 | |
+| Port-restricted cone | 대체로 성공 | |
+| **Symmetric NAT** | **실패** | TURN 필요 |
+
+한국 가정용 공유기는 대체로 괜찮지만, **일부 기업망/학교망/셀룰러 CGNAT에서 대칭 NAT가 나온다.** 이때 TURN 없이는 방법이 없다.
+
+### 실패 감지
+
+- `pc.oniceconnectionstatechange` → `failed`
+- `pc.onconnectionstatechange` → `failed`
+- 또는 SDP 교환 후 N초간 DataChannel이 `open`이 안 됨
+
+Trystero는 이걸 `onJoinError`로 감싸준다.
+
+### TURN 비용 감각
+
+TURN은 모든 트래픽을 중계하므로 대역폭이 그대로 돈이다. 우리 게임 기준 피어당 ~10 KB/s × 2방향 → 1시간 플레이에 약 70 MB. Cloudflare 무료 티어(월 1000GB)면 꽤 버티지만, **우리가 운영하면 H1 위반**이라 안 한다.
+
+---
+
+## 암호화
+
+DataChannel은 **항상 DTLS로 암호화된다**. 끌 수 없다. 별도 암호화 계층이 필요 없다.
+
+단, **피어끼리는 서로의 IP를 알게 된다.** ICE 후보 교환의 본질적 성질이다. 숨길 방법은 TURN 강제뿐(= 서버 필요).
+
+---
+
+## 브라우저 차이 (2026 기준, 실측 필요)
+
+- Safari(iOS 포함)가 가장 까다롭다. `RTCPeerConnection` 생성 타이밍, 미디어 권한 등에서 다른 동작
+- iOS Safari는 백그라운드 전환 시 연결을 적극적으로 끊는다 → RELIABILITY.md §4의 재연결 로직이 실제로 자주 돈다
+- Firefox는 `maxPacketLifeTime` 해석이 Chrome과 미묘하게 다를 수 있음 → 우리는 `maxRetransmits: 0`만 쓴다
+
+> 위 브라우저 차이는 일반적으로 알려진 경향이다. **실기 검증 전까지 확정으로 취급하지 않는다.**
+
+---
+
+## 우리 프로젝트 적용 요약
+
+```js
+// fast: 스냅샷 / 입력
+pc.createDataChannel('fast', { ordered: false, maxRetransmits: 0 })
+
+// sure: 이벤트 / 채팅 / 호스트 이양 (Trystero makeAction이 이 역할)
+```
+
+- 송신 전 `readyState === 'open'` 확인
+- 송신 전 `bufferedAmount` 임계 확인 → 넘으면 이번 틱 스킵
+- 수신 시 크기 상한 + 파싱 실패 카운터
+- `iceconnectionstate === 'failed'` → 사용자에게 구체적 안내 (lobby-and-joining.md)

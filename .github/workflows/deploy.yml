@@ -1,0 +1,65 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  WASM_BINDGEN_CLI_VERSION: "0.2.128"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 툴체인 확인 (rust-toolchain.toml 자동 인식)
+        run: rustup show
+
+      - name: Cargo 캐시
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-wasm-${{ runner.os }}-
+
+      - name: wasm-bindgen-cli 설치 (버전 고정)
+        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_CLI_VERSION" --locked
+
+      - name: wasm 빌드
+        run: cargo build --release --target wasm32-unknown-unknown -p peekaboom-app
+
+      - name: wasm-bindgen
+        run: |
+          mkdir -p pkg
+          wasm-bindgen target/wasm32-unknown-unknown/release/peekaboom_app.wasm \
+            --out-dir pkg --target web
+
+      - name: 번들 크기 확인 (H5)
+        run: bash tools/check_size.sh pkg/peekaboom_app_bg.wasm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: npm run build
+        run: npm run build
+
+      # repo-layout.md "빌드 해시 노출": 캐시 때문에 구버전을 보고 "안 된다"고
+      # 착각하는 걸 막는다. 디버그 패널이 이 값을 그대로 보여준다.
+      - name: 빌드 해시 삽입
+        run: sed -i "s/__BUILD_SHA__/${GITHUB_SHA::7}/" dist/index.html
+
+      - name: gh-pages 배포
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
