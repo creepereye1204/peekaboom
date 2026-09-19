@@ -7,7 +7,7 @@ use peekaboom_sim::{action_flags, V2};
 pub fn move_dir(pressed: &[&str]) -> V2 {
     let mut x = 0.0f32;
     let mut y = 0.0f32;
-    let has = |code: &str| pressed.iter().any(|k| *k == code);
+    let has = |code: &str| pressed.contains(&code);
 
     if has("KeyW") || has("ArrowUp") {
         y -= 1.0;
@@ -27,7 +27,7 @@ pub fn move_dir(pressed: &[&str]) -> V2 {
 
 /// 눌린 키에서 액션 플래그를 뽑는다.
 pub fn action_flags_from_keys(pressed: &[&str]) -> u8 {
-    let has = |code: &str| pressed.iter().any(|k| *k == code);
+    let has = |code: &str| pressed.contains(&code);
     let mut flags = 0u8;
     if has("Space") || has("KeyE") {
         flags |= action_flags::INTERACT;
