@@ -34,7 +34,6 @@
 | TD-012 | `crates/net`, `crates/sim`, `crates/render` | `wire.rs`/`host.rs`/`client.rs`(net), `map.rs`/`vis.rs`(sim), `atlas.rs`(render) 미작성. 001은 호스트 권위·시야·지도·텍스처가 없어서 필요 없었음 | 001 범위 밖 (exec-plans/active/001 "하지 않는 것") | M2(002 core-loop) 착수 시 | **열림** |
 | TD-013 | `web/index.html` CSP | `connect-src`가 `wss: https:`로 넓게 열려 있음. Trystero nostr 전략의 정확한 릴레이 호스트 목록으로 좁혀야 하는데, 그 목록이 라이브러리 내부(`node_modules/trystero/src/nostr.js`의 `defaultRelayUrls`)에 있고 버전마다 바뀔 수 있어 지금은 고정하지 않음 | CSP를 정밀하게 좁히려면 릴레이 목록을 우리가 직접 핀(pin)해야 하는데, 그러면 트리스테로 업데이트마다 깨질 위험이 생김 | 실제 공격 표면 검토가 필요해지는 시점 (배포 전 보안 리뷰) | **열림** |
 | TD-014 | `web/net.js`, `web/main.js` | ICE 연결 실패(대칭 NAT)를 감지해 "이 네트워크에서는 연결이 안 돼요" 안내를 띄우는 UI가 없다. Trystero `getPeers()`는 **이미 연결된** 피어만 주기 때문에, 연결 시도 중 실패하는 피어의 `RTCPeerConnection`에는 애초에 접근할 공개 API가 없다(0.21.8 기준) | 001 체크리스트가 요구하지 않음 (연결 매트릭스는 사람이 눈으로 판정). ARCHITECTURE.md §5가 약속하는 안내 UI는 더 큰 작업 | 001 연결 매트릭스에서 실패율이 50%를 넘는 조합이 나올 때 (그때 어차피 이 UI가 필요해짐) | **열림** |
-| TD-015 | `e2e/connection.spec.js` | 이 샌드박스 OS(Ubuntu 20.04)가 Playwright 공식 지원 밖이라 `npx playwright install chromium`이 실패한다. 그래서 이 E2E 테스트를 **로컬에서 실제로 실행해 통과를 확인하지 못했다** — 코드 리뷰(API 시그니처 대조)만 했다 | 샌드박스 환경 제약 | CI(ubuntu-latest, Playwright 공식 지원)에서 처음 돌 때. 실패하면 여기 상태를 갱신 | **열림 (미검증)** |
 
 ---
 
@@ -47,6 +46,7 @@
 | — | **`rust-toolchain.toml`이 1.82로 고정돼 있었는데 `wasm-bindgen-cli 0.2.128`(Cargo.toml에 정확히 핀 고정)의 MSRV는 1.86** — 로컬 샌드박스에는 이미 다른 경로로 설치된 wasm-bindgen 바이너리가 있어서 안 걸렸지만, GitHub Actions에서 `cargo install wasm-bindgen-cli`를 처음부터 하니 바로 터졌다 (Deploy 워크플로 최초 실행 실패) | `rust-toolchain.toml`을 1.86으로 올렸다(repo-layout.md도 같이 수정). 교훈: **로컬에 이미 깔려있는 도구는 그 도구가 어떤 툴체인으로 빌드됐는지 확인하지 않으면 버전 고정이 실제로 지켜지는지 알 수 없다 — CI의 "깨끗한 상태에서 처음부터"가 이런 걸 잡아낸다** |
 | — | **CSP `script-src 'self'`가 WASM 컴파일 자체를 막음** — `WebAssembly.instantiateStreaming()`이 "violates ... script-src 'self'"로 CSP 위반 처리됐다. 로컬 수동 확인(브라우저로 직접 열어보지 않음)으로는 못 잡고 Playwright E2E가 처음으로 잡아냈다 | `'wasm-unsafe-eval'`을 script-src에 추가 (`'unsafe-eval'`과 다르다 — 임의 eval은 여전히 막힘, WASM 컴파일만 허용하는 전용 키워드). 교훈: **E2E를 브라우저에서 실제로 돌려보지 않으면 CSP처럼 "코드는 맞는데 배포 환경에서만 깨지는" 버그를 못 잡는다 — 001에서 E2E를 만들어둔 게 여기서 값을 했다** |
 | — | **Trystero 참조 캐시가 실제 설치 버전(0.21.8)과 어긋남** — `docs/references/trystero-llms.txt`가 `room.onPeerJoin = fn`(대입식), `joinRoom`의 3번째 인자를 `{onJoinError, onPeerHandshake}` 옵션 객체, `isInitiator` 플래그 존재를 전제로 적혀 있었다. 실제로는 `room.onPeerJoin(fn)`(함수 호출), 3번째 인자는 `onJoinError` 콜백 그 자체, `onPeerHandshake`/`isInitiator`는 이 버전에 아예 없음 | `npm install` 후 `node_modules/trystero/src/{room,strategy,peer}.js`를 직접 읽고 캐시를 고쳤다. `fast` 채널을 누가 만들지는 `selfId` 사전순 비교로 직접 정하는 것으로 설계 변경(`web/net.js`). 교훈: **레퍼런스 캐시도 캐시일 뿐이다 — 실제 패키지를 설치할 수 있으면 소스를 직접 대조한다** (AGENTS.md §6) |
+| TD-015 | (구) `e2e/connection.spec.js` — 이 샌드박스 OS(Ubuntu 20.04)가 Playwright 공식 지원 밖이라 로컬에서는 브라우저를 설치할 수 없었음 | GitHub Actions(ubuntu-latest)에서 처음 돌려 통과를 확인했다. 그 과정에서 CSP 버그(바로 위 항목)를 실제로 잡아냈다 — E2E를 만들어둔 게 값을 한 사례 |
 
 ---
 

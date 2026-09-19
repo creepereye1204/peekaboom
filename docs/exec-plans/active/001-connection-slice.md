@@ -20,7 +20,7 @@
 - [x] `rust-toolchain.toml` (MSRV 고정), `Cargo.toml` 워크스페이스
 - [x] 크레이트 골격: `sim` / `net` / `render` / `input` / `app`
 - [x] `wasm-bindgen` CLI + `vite` 최소 빌드 (`wasm-pack` 대신 — DD-006에 근거 기록)
-- [x] GitHub Actions → `gh-pages` 배포 워크플로 (`.github/workflows/{ci,deploy}.yml`, **미실행** — 이 리포를 GitHub에 푸시해야 처음 돈다)
+- [x] GitHub Actions → `gh-pages` 배포 워크플로 (`.github/workflows/{ci,deploy}.yml`). **실제 배포 확인됨**: https://creepereye1204.github.io/peekaboom/ (CI·Deploy 둘 다 그린. 과정에서 wasm-bindgen-cli MSRV 불일치, clippy 1.95 신규 린트, CSP가 WASM 컴파일을 막는 버그 3개를 실측으로 잡아 고쳤다 — tech-debt-tracker "해결된 부채" 참조)
 
 ### 렌더 (최소)
 - [x] WebGL2 컨텍스트 생성, 리사이즈, DPR 상한 2.0
@@ -34,7 +34,7 @@
 ### 네트워크
 - [x] `web/net.js`: Trystero `joinRoom` (Nostr, `password` 포함)
 - [x] `getPeers()`로 `fast` 채널 직접 개설 (`ordered:false, maxRetransmits:0`) — 누가 `createDataChannel`을 부를지는 `selfId` 사전순 비교로 결정 (Trystero에 `isInitiator` 공개 API가 없어서 — tech-debt-tracker 참조)
-- [x] 브라우저 자동 테스트: `e2e/connection.spec.js`가 같은 머신 위 2피어의 fast 채널 개설을 확인 (샌드박스에서 Playwright 브라우저 설치 불가 — **로컬 미실행**, CI에서 첫 실행. TD-015)
+- [x] 브라우저 자동 테스트: `e2e/connection.spec.js`가 같은 머신 위 2피어의 fast 채널 개설을 확인. **CI에서 통과 확인됨** (샌드박스에서는 Playwright 브라우저 설치 자체가 불가해 로컬 실행 불가했음 — GitHub Actions에서 처음 돌려 검증)
 - [x] 자기 위치를 30Hz로 브로드캐스트 (**권위 없음 — 이 단계에서만 허용**)
 - [x] 수신 위치를 그대로 렌더 (보간 없음 — 얼마나 끊기는지 눈으로 본다)
 - [x] `getRelaySockets()` 상태를 디버그 패널에 표시
