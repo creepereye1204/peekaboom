@@ -1,4 +1,7 @@
 [toolchain]
-channel = "1.82"
+# wasm-bindgen-cli 0.2.128(Cargo.toml에 정확히 핀 고정)의 MSRV가 1.86이라
+# 그 아래로는 CI에서 `cargo install wasm-bindgen-cli`가 실패한다 (실측:
+# GitHub Actions에서 1.82로 시도해 터짐 — tech-debt-tracker "해결된 부채" 참조).
+channel = "1.86"
 targets = ["wasm32-unknown-unknown"]
 components = ["rustfmt", "clippy"]

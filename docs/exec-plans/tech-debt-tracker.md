@@ -44,6 +44,7 @@
 |---|---|---|
 | — | **DD-001 결번** — 언어 선택(Rust+WASM vs JS) 결정의 근거가 기록되지 않아 "왜 WASM인가"가 나중에 질문으로 돌아옴 | `design-docs/language-choice.md` 작성. 탈출 조건까지 명시. 교훈: **결번을 발견하면 비워두지 말고 채운다** |
 | — | **맵 크기 불일치** — DD-009에서 64×40으로 줄였는데 ARCHITECTURE·DD-003·DD-004·hide-and-seek이 128×128로 남아 있었음 | 4개 문서 동시 수정. 교훈: **수치를 바꾸는 결정은 그 수치를 인용한 문서를 전부 찾아 같이 고친다** (CB-7) |
+| — | **`rust-toolchain.toml`이 1.82로 고정돼 있었는데 `wasm-bindgen-cli 0.2.128`(Cargo.toml에 정확히 핀 고정)의 MSRV는 1.86** — 로컬 샌드박스에는 이미 다른 경로로 설치된 wasm-bindgen 바이너리가 있어서 안 걸렸지만, GitHub Actions에서 `cargo install wasm-bindgen-cli`를 처음부터 하니 바로 터졌다 (Deploy 워크플로 최초 실행 실패) | `rust-toolchain.toml`을 1.86으로 올렸다(repo-layout.md도 같이 수정). 교훈: **로컬에 이미 깔려있는 도구는 그 도구가 어떤 툴체인으로 빌드됐는지 확인하지 않으면 버전 고정이 실제로 지켜지는지 알 수 없다 — CI의 "깨끗한 상태에서 처음부터"가 이런 걸 잡아낸다** |
 | — | **Trystero 참조 캐시가 실제 설치 버전(0.21.8)과 어긋남** — `docs/references/trystero-llms.txt`가 `room.onPeerJoin = fn`(대입식), `joinRoom`의 3번째 인자를 `{onJoinError, onPeerHandshake}` 옵션 객체, `isInitiator` 플래그 존재를 전제로 적혀 있었다. 실제로는 `room.onPeerJoin(fn)`(함수 호출), 3번째 인자는 `onJoinError` 콜백 그 자체, `onPeerHandshake`/`isInitiator`는 이 버전에 아예 없음 | `npm install` 후 `node_modules/trystero/src/{room,strategy,peer}.js`를 직접 읽고 캐시를 고쳤다. `fast` 채널을 누가 만들지는 `selfId` 사전순 비교로 직접 정하는 것으로 설계 변경(`web/net.js`). 교훈: **레퍼런스 캐시도 캐시일 뿐이다 — 실제 패키지를 설치할 수 있으면 소스를 직접 대조한다** (AGENTS.md §6) |
 
 ---

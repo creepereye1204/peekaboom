@@ -142,7 +142,7 @@ app ──┬──> render ──┐
 
 ```toml
 [toolchain]
-channel = "1.82"
+channel = "1.86"
 targets = ["wasm32-unknown-unknown"]
 components = ["rustfmt", "clippy"]
 ```
