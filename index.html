@@ -8,15 +8,19 @@
     />
     <!--
       SECURITY.md §6: script-src 'self' (Trystero는 번들에 포함, CDN 안 씀).
+      'wasm-unsafe-eval'은 'unsafe-eval'과 다르다 — 임의 eval/Function()은 여전히
+      막혀 있고, WASM 컴파일만 허용하는 CSP 전용 키워드다. 이게 없으면
+      WebAssembly.instantiateStreaming()이 CSP 위반으로 막힌다 (실측: Playwright
+      E2E가 최초로 이 문제를 잡아냄 — tech-debt-tracker "해결된 부채" 참조).
       connect-src: 시그널링 릴레이는 공개 wss 다수라 정확한 호스트를 고정하기
       어렵다 — Trystero nostr 전략의 릴레이 목록이 바뀔 수 있어서다.
       tech-debt-tracker TD-013: 정확한 릴레이 호스트로 좁히기.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: https:; img-src 'self' data:;"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: https:; img-src 'self' data:;"
     />
-    <meta name="build" content="53b5fba" />
+    <meta name="build" content="8330123" />
     <title>PEEKABOOM</title>
     <script type="module" crossorigin src="./assets/index-CtIUh8mn.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-C9ZDCrdb.css">
